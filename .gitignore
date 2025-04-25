@@ -1,0 +1,32 @@
+.vscode
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Go
+/bin
+/pkg
+/out
+/vendor
+
+# IDE
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+
+# IDE
+.idea
+
+# VSCode
+.vscode
+
+# Docker
+.docker
+
+
+
+
+
