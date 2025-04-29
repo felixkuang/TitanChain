@@ -3,105 +3,108 @@ package core
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/binary"
+	"encoding/gob"
+	"fmt"
 	"io"
 
+	"github.com/felixkuang/titanchain/crypto"
 	"github.com/felixkuang/titanchain/types"
 )
 
 // Header 表示区块链中区块的元数据结构
 type Header struct {
-	Version   uint32     // 协议版本号
-	PrevBlock types.Hash // 前一个区块的哈希值
-	Timestamp int64      // 区块创建时间戳
-	Height    uint32     // 区块在链中的高度
-	Nonce     uint64     // 用于挖矿和共识的随机数
-}
-
-// EncodeBinary 将区块头序列化为二进制格式
-// 使用小端序（LittleEndian）写入所有字段
-func (h *Header) EncodeBinary(w io.Writer) error {
-	if err := binary.Write(w, binary.LittleEndian, &h.Version); err != nil {
-		return err
-	}
-	if err := binary.Write(w, binary.LittleEndian, &h.PrevBlock); err != nil {
-		return err
-	}
-	if err := binary.Write(w, binary.LittleEndian, &h.Timestamp); err != nil {
-		return err
-	}
-	if err := binary.Write(w, binary.LittleEndian, &h.Height); err != nil {
-		return err
-	}
-	return binary.Write(w, binary.LittleEndian, &h.Nonce)
-}
-
-// DecodeBinary 从二进制格式反序列化区块头
-// 使用小端序（LittleEndian）读取所有字段
-func (h *Header) DecodeBinary(r io.Reader) error {
-	if err := binary.Read(r, binary.LittleEndian, &h.Version); err != nil {
-		return err
-	}
-	if err := binary.Read(r, binary.LittleEndian, &h.PrevBlock); err != nil {
-		return err
-	}
-	if err := binary.Read(r, binary.LittleEndian, &h.Timestamp); err != nil {
-		return err
-	}
-	if err := binary.Read(r, binary.LittleEndian, &h.Height); err != nil {
-		return err
-	}
-	return binary.Read(r, binary.LittleEndian, &h.Nonce)
+	Version       uint32     // 协议版本号
+	DataHash      types.Hash // 区块中所有交易的Merkle根哈希
+	PrevBlockHash types.Hash // 前一个区块的哈希值
+	Height        uint32     // 区块在链中的高度
+	Timestamp     int64      // 区块创建时间戳
 }
 
 // Block 表示区块链中的完整区块
 type Block struct {
-	Header                     // 嵌入区块头
-	Transactions []Transaction // 区块中包含的交易列表
-
-	hash types.Hash // 缓存的区块头哈希值，用于提升性能
+	*Header                        // 嵌入区块头
+	Transactions []Transaction     // 区块中包含的交易列表
+	Validator    crypto.PublicKey  // 验证者的公钥
+	Signature    *crypto.Signature // 验证者对区块的签名
+	hash         types.Hash        // 缓存的区块头哈希值，用于提升性能
 }
 
-// Hash 计算并返回区块头的哈希值
-// 使用SHA-256进行哈希计算，并缓存结果
-func (b *Block) Hash() types.Hash {
-	buf := &bytes.Buffer{}
-	b.Header.EncodeBinary(buf)
+// NewBlock 创建一个新的区块实例
+// h: 区块头信息
+// txx: 要包含在区块中的交易列表
+func NewBlock(h *Header, txx []Transaction) *Block {
+	return &Block{
+		Header:       h,
+		Transactions: txx,
+	}
+}
 
+// Sign 使用给定的私钥对区块进行签名
+// privKey: 用于签名的私钥
+// 返回可能发生的错误
+func (b *Block) Sign(privKey crypto.PrivateKey) error {
+	sig, err := privKey.Sign(b.HeaderData())
+	if err != nil {
+		return err
+	}
+
+	b.Validator = privKey.PublicKey()
+	b.Signature = sig
+
+	return nil
+}
+
+// Verify 验证区块的签名是否有效
+// 返回验证过程中可能发生的错误
+func (b *Block) Verify() error {
+	if b.Signature == nil {
+		return fmt.Errorf("block has no signature")
+	}
+
+	if !b.Signature.Verify(b.Validator, b.HeaderData()) {
+		return fmt.Errorf("block has invalid signature")
+	}
+
+	return nil
+}
+
+// Decode 从输入流中解码区块数据
+// r: 输入流
+// dec: 解码器实例
+// 返回解码过程中可能发生的错误
+func (b *Block) Decode(r io.Reader, dec Decoder[*Block]) error {
+	return dec.Decode(r, b)
+}
+
+// Encode 将区块数据编码到输出流
+// w: 输出流
+// enc: 编码器实例
+// 返回编码过程中可能发生的错误
+func (b *Block) Encode(w io.Writer, enc Encoder[*Block]) error {
+	return enc.Encode(w, b)
+}
+
+// Hash 计算并返回区块的哈希值
+// hasher: 用于计算哈希的实例
+// 如果哈希值已经计算过，则直接返回缓存的值
+func (b *Block) Hash(hasher Hasher[*Block]) types.Hash {
 	if b.hash.IsZero() {
-		b.hash = types.Hash(sha256.Sum256(buf.Bytes()))
+		b.hash = hasher.Hash(b)
 	}
 
 	return b.hash
 }
 
-// EncodeBinary 将整个区块（区块头和交易）序列化为二进制格式
-func (b *Block) EncodeBinary(w io.Writer) error {
-	if err := b.Header.EncodeBinary(w); err != nil {
-		return err
+// HeaderData 返回区块头的二进制表示
+// 使用gob编码将区块头序列化
+// 返回序列化后的字节切片，如果发生错误则返回nil
+func (b *Block) HeaderData() []byte {
+	buf := &bytes.Buffer{}
+	enc := gob.NewEncoder(buf)
+	err := enc.Encode(b.Header)
+	if err != nil {
+		return nil
 	}
 
-	for _, tx := range b.Transactions {
-		if err := tx.EncodeBinary(w); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// DecodeBinary 从二进制格式反序列化整个区块（区块头和交易）
-func (b *Block) DecodeBinary(r io.Reader) error {
-	if err := b.Header.DecodeBinary(r); err != nil {
-		return err
-	}
-
-	for _, tx := range b.Transactions {
-		if err := tx.DecodeBinary(r); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return buf.Bytes()
 }
