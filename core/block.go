@@ -20,6 +20,17 @@ type Header struct {
 	Timestamp     int64      // 区块创建时间戳
 }
 
+func (h *Header) Bytes() []byte {
+	buf := &bytes.Buffer{}
+	enc := gob.NewEncoder(buf)
+	err := enc.Encode(h)
+	if err != nil {
+		return nil
+	}
+
+	return buf.Bytes()
+}
+
 // Block 表示区块链中的完整区块
 type Block struct {
 	*Header                        // 嵌入区块头
@@ -27,6 +38,10 @@ type Block struct {
 	Validator    crypto.PublicKey  // 验证者的公钥
 	Signature    *crypto.Signature // 验证者对区块的签名
 	hash         types.Hash        // 缓存的区块头哈希值，用于提升性能
+}
+
+func (b *Block) AddTransaction(tx *Transaction) {
+	b.Transactions = append(b.Transactions, *tx)
 }
 
 // NewBlock 创建一个新的区块实例
@@ -43,7 +58,7 @@ func NewBlock(h *Header, txx []Transaction) *Block {
 // privKey: 用于签名的私钥
 // 返回可能发生的错误
 func (b *Block) Sign(privKey crypto.PrivateKey) error {
-	sig, err := privKey.Sign(b.HeaderData())
+	sig, err := privKey.Sign(b.Header.Bytes())
 	if err != nil {
 		return err
 	}
@@ -61,8 +76,14 @@ func (b *Block) Verify() error {
 		return fmt.Errorf("block has no signature")
 	}
 
-	if !b.Signature.Verify(b.Validator, b.HeaderData()) {
+	if !b.Signature.Verify(b.Validator, b.Header.Bytes()) {
 		return fmt.Errorf("block has invalid signature")
+	}
+
+	for _, tx := range b.Transactions {
+		if err := tx.Verify(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -87,24 +108,10 @@ func (b *Block) Encode(w io.Writer, enc Encoder[*Block]) error {
 // Hash 计算并返回区块的哈希值
 // hasher: 用于计算哈希的实例
 // 如果哈希值已经计算过，则直接返回缓存的值
-func (b *Block) Hash(hasher Hasher[*Block]) types.Hash {
+func (b *Block) Hash(hasher Hasher[*Header]) types.Hash {
 	if b.hash.IsZero() {
-		b.hash = hasher.Hash(b)
+		b.hash = hasher.Hash(b.Header)
 	}
 
 	return b.hash
-}
-
-// HeaderData 返回区块头的二进制表示
-// 使用gob编码将区块头序列化
-// 返回序列化后的字节切片，如果发生错误则返回nil
-func (b *Block) HeaderData() []byte {
-	buf := &bytes.Buffer{}
-	enc := gob.NewEncoder(buf)
-	err := enc.Encode(b.Header)
-	if err != nil {
-		return nil
-	}
-
-	return buf.Bytes()
 }

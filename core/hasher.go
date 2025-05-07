@@ -20,7 +20,7 @@ type BlockHasher struct{}
 
 // Hash 使用SHA256算法计算区块的哈希值
 // 只计算区块头数据的哈希，不包含交易数据
-func (BlockHasher) Hash(b *Block) types.Hash {
-	h := sha256.Sum256(b.HeaderData())
+func (BlockHasher) Hash(b *Header) types.Hash {
+	h := sha256.Sum256(b.Bytes())
 	return types.Hash(h)
 }

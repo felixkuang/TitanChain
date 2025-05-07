@@ -1,5 +1,10 @@
 package core
 
+import (
+	"fmt"
+	"github.com/sirupsen/logrus"
+)
+
 // Blockchain 表示区块链的核心数据结构
 type Blockchain struct {
 	store     Storage   // 区块存储接口
@@ -38,6 +43,14 @@ func (bc *Blockchain) AddBlock(b *Block) error {
 	return bc.addBlockWithoutValidation(b)
 }
 
+func (bc *Blockchain) GetHeader(height uint32) (*Header, error) {
+	if height > bc.Height() {
+		return nil, fmt.Errorf("given height (%d) too high", height)
+	}
+
+	return bc.headers[height], nil
+}
+
 // HasBlock 检查指定高度的区块是否存在
 // height: 要检查的区块高度
 // 返回是否存在该高度的区块
@@ -56,6 +69,11 @@ func (bc *Blockchain) Height() uint32 {
 // 返回存储过程中可能发生的错误
 func (bc *Blockchain) addBlockWithoutValidation(b *Block) error {
 	bc.headers = append(bc.headers, b.Header)
+
+	logrus.WithFields(logrus.Fields{
+		"height": b.Height,
+		"hash":   b.Hash(BlockHasher{}),
+	}).Info("adding new block")
 
 	return bc.store.Put(b)
 }

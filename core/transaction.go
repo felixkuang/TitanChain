@@ -11,7 +11,7 @@ import (
 // 目前实现了一个简单的数据载荷模型
 type Transaction struct {
 	Data      []byte            // 交易的原始数据
-	PublicKey crypto.PublicKey  // 交易发起者的公钥
+	From      crypto.PublicKey  // 交易发起者的公钥
 	Signature *crypto.Signature // 交易的数字签名
 }
 
@@ -24,7 +24,7 @@ func (tx *Transaction) Sign(privKey crypto.PrivateKey) error {
 		return err
 	}
 
-	tx.PublicKey = privKey.PublicKey()
+	tx.From = privKey.PublicKey()
 	tx.Signature = sig
 
 	return nil
@@ -38,7 +38,7 @@ func (tx *Transaction) Verify() error {
 		return fmt.Errorf("transaction has no signature")
 	}
 
-	if !tx.Signature.Verify(tx.PublicKey, tx.Data) {
+	if !tx.Signature.Verify(tx.From, tx.Data) {
 		return fmt.Errorf("invalid transaction signature")
 	}
 
