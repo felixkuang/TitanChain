@@ -22,7 +22,7 @@ func main() {
 	}()
 
 	// 创建并配置服务器
-	opts := network.ServerOptions{
+	opts := network.ServerOpts{
 		Transports: []network.Transport{trLocal, trRemote},
 	}
 

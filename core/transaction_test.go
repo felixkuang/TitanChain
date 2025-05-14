@@ -34,6 +34,16 @@ func TestVerifyTransaction(t *testing.T) {
 	assert.NotNil(t, tx.Verify())
 }
 
+func TestTxEncodeDecode(t *testing.T) {
+	//tx := randomTxWithSignature(t)
+	//buf := &bytes.Buffer{}
+	//assert.Nil(t, tx.Encode(NewGobTxEncoder(buf)))
+	//
+	//txDecoded := new(Transaction)
+	//assert.Nil(t, txDecoded.Decode(NewGobTxDecoder(buf)))
+	//assert.Equal(t, tx, txDecoded)
+}
+
 // randomTxWithSignature 辅助函数：生成带签名的交易
 func randomTxWithSignature(t *testing.T) *Transaction {
 	privKey := crypto.GeneratePrivateKey()

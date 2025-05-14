@@ -29,8 +29,8 @@ func (k PrivateKey) Sign(data []byte) (*Signature, error) {
 	}
 
 	return &Signature{
-		r: r,
-		s: s,
+		R: r,
+		S: s,
 	}, nil
 }
 
@@ -50,19 +50,19 @@ func GeneratePrivateKey() PrivateKey {
 // PublicKey 从私钥中获取对应的公钥
 func (k PrivateKey) PublicKey() PublicKey {
 	return PublicKey{
-		key: &k.key.PublicKey,
+		Key: &k.key.PublicKey,
 	}
 }
 
 // PublicKey 封装了ECDSA公钥
 type PublicKey struct {
-	key *ecdsa.PublicKey // 底层ECDSA公钥
+	Key *ecdsa.PublicKey // 底层ECDSA公钥
 }
 
 // ToSlice 将公钥转换为字节切片
 // 使用压缩格式进行编码
 func (k PublicKey) ToSlice() []byte {
-	return elliptic.MarshalCompressed(k.key, k.key.X, k.key.Y)
+	return elliptic.MarshalCompressed(k.Key, k.Key.X, k.Key.Y)
 }
 
 // Address 从公钥生成地址
@@ -74,7 +74,7 @@ func (k PublicKey) Address() types.Address {
 
 // Signature 表示ECDSA签名
 type Signature struct {
-	s, r *big.Int // 签名的两个组成部分
+	S, R *big.Int // 签名的两个组成部分
 }
 
 // Verify 验证签名是否有效
@@ -85,5 +85,5 @@ type Signature struct {
 // 返回：
 //   - 签名是否有效
 func (sig Signature) Verify(pubKey PublicKey, data []byte) bool {
-	return ecdsa.Verify(pubKey.key, data, sig.r, sig.s)
+	return ecdsa.Verify(pubKey.Key, data, sig.R, sig.S)
 }

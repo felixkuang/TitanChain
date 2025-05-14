@@ -1,3 +1,4 @@
+// Package network 实现了 TitanChain 区块链的网络传输层，包括本地传输、节点连接、消息发送等功能。
 package network
 
 import (
@@ -7,15 +8,19 @@ import (
 )
 
 // TransportError 表示传输层的自定义错误类型
+// 用于描述网络传输过程中的异常和错误
+// Message: 错误信息
 type TransportError struct {
 	Message string
 }
 
+// Error 实现 error 接口，返回错误信息
 func (e *TransportError) Error() string {
 	return e.Message
 }
 
-// LocalTransport 实现了用于本地网络通信的Transport接口
+// LocalTransport 实现了用于本地网络通信的 Transport 接口
+// 支持点对点连接、消息发送、超时、最大连接数、线程安全等
 type LocalTransport struct {
 	addr      NetAddr                     // 当前节点的地址
 	consumeCh chan RPC                    // 用于接收消息的通道
@@ -26,14 +31,17 @@ type LocalTransport struct {
 	running   bool                        // 表示传输层是否正在运行
 }
 
-// LocalTransportOpts 包含创建新的LocalTransport实例的配置选项
+// LocalTransportOpts 包含创建新的 LocalTransport 实例的配置选项
+// Addr: 节点地址
+// MaxPeers: 最大对等节点数
+// Timeout: 超时时间
 type LocalTransportOpts struct {
 	Addr     NetAddr       // 节点地址
 	MaxPeers int           // 最大对等节点数
 	Timeout  time.Duration // 超时时间
 }
 
-// NewLocalTransport 使用给定的配置选项创建一个新的LocalTransport实例
+// NewLocalTransport 使用给定的配置选项创建一个新的 LocalTransport 实例
 func NewLocalTransport(opts LocalTransportOpts) Transport {
 	if opts.MaxPeers == 0 {
 		opts.MaxPeers = 100 // 默认最大对等节点数
@@ -58,6 +66,8 @@ func (t *LocalTransport) Consume() <-chan RPC {
 }
 
 // Connect 与另一个传输节点建立双向连接
+// tr: 目标传输层实例
+// 返回连接建立过程中的错误
 func (t *LocalTransport) Connect(tr Transport) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -70,7 +80,7 @@ func (t *LocalTransport) Connect(tr Transport) error {
 		return &TransportError{"已达到最大对等节点数限制"}
 	}
 
-	// 类型断言确保连接的是LocalTransport类型
+	// 类型断言确保连接的是 LocalTransport 类型
 	localTr, ok := tr.(*LocalTransport)
 	if !ok {
 		return &TransportError{"无效的传输层类型"}
@@ -92,6 +102,9 @@ func (t *LocalTransport) Connect(tr Transport) error {
 }
 
 // SendMessage 向指定的对等节点发送消息，支持超时机制
+// to: 目标节点地址
+// payload: 消息内容
+// 返回发送过程中的错误
 func (t *LocalTransport) SendMessage(to NetAddr, payload []byte) error {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
@@ -126,6 +139,8 @@ func (t *LocalTransport) Addr() NetAddr {
 }
 
 // Disconnect 从传输层的对等节点列表中移除指定节点
+// addr: 要断开的对等节点地址
+// 返回断开过程中的错误
 func (t *LocalTransport) Disconnect(addr NetAddr) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -142,7 +157,8 @@ func (t *LocalTransport) Disconnect(addr NetAddr) error {
 	return nil
 }
 
-// Close 关闭传输层
+// Close 关闭传输层，释放所有资源
+// 返回关闭过程中的错误
 func (t *LocalTransport) Close() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()

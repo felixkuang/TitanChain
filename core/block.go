@@ -94,7 +94,7 @@ func (b *Block) Verify() error {
 // dec: 解码器实例
 // 返回解码过程中可能发生的错误
 func (b *Block) Decode(r io.Reader, dec Decoder[*Block]) error {
-	return dec.Decode(r, b)
+	return dec.Decode(b)
 }
 
 // Encode 将区块数据编码到输出流
@@ -102,7 +102,7 @@ func (b *Block) Decode(r io.Reader, dec Decoder[*Block]) error {
 // enc: 编码器实例
 // 返回编码过程中可能发生的错误
 func (b *Block) Encode(w io.Writer, enc Encoder[*Block]) error {
-	return enc.Encode(w, b)
+	return enc.Encode(b)
 }
 
 // Hash 计算并返回区块的哈希值
