@@ -76,24 +76,18 @@ func TestLocalTransportSendMessage(t *testing.T) {
 	}
 
 	// 测试发送消息
-	payload := []byte("test message")
-	err = tr1.SendMessage(tr2.Addr(), payload)
-	if err != nil {
-		t.Errorf("发送消息失败: %v", err)
-	}
+	msg := []byte("hello world")
+	assert.Nil(t, tr1.SendMessage(tr2.Addr(), msg))
 
 	// 测试接收消息
-	select {
-	case rpc := <-tr2.Consume():
-		if string(rpc.Payload) != string(payload) {
-			t.Errorf("期望负载为 %s，实际得到 %s", string(payload), string(rpc.Payload))
-		}
-		if rpc.From != tr1.Addr() {
-			t.Errorf("期望发送方为 %s，实际得到 %s", tr1.Addr(), rpc.From)
-		}
-	case <-time.After(time.Second):
-		t.Error("等待消息超时")
-	}
+	rpc := <-tr2.Consume()
+	buf := make([]byte, len(msg))
+	n, err := rpc.Payload.Read(buf)
+	assert.Nil(t, err)
+	assert.Equal(t, n, len(msg))
+
+	assert.Equal(t, buf, msg)
+	assert.Equal(t, rpc.From, tr1.Addr())
 }
 
 // 测试LocalTransport的断开连接功能

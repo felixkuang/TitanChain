@@ -4,14 +4,6 @@ package network
 // NetAddr 表示网络地址，使用字符串类型
 type NetAddr string
 
-// RPC 表示远程过程调用的消息结构
-type RPC struct {
-	// From 表示发送者的网络地址
-	From NetAddr
-	// Payload 包含消息的具体数据
-	Payload []byte
-}
-
 // Transport 定义了节点间网络通信的接口
 type Transport interface {
 	// Consume 返回一个用于接收传入RPC消息的通道

@@ -18,6 +18,7 @@ var defaultBlockTime = 5 * time.Second
 // ServerOpts 定义了服务器的配置选项
 // 包括传输层、出块时间、私钥等
 type ServerOpts struct {
+	RPCHandler RPCHandler
 	Transports []Transport        // 传输层实例列表
 	BlockTime  time.Duration      // 出块间隔
 	PrivateKey *crypto.PrivateKey // 节点私钥（为空则非验证者）
@@ -49,6 +50,11 @@ func NewServer(opts ServerOpts) *Server {
 		rpcCh:       make(chan RPC),         // 创建RPC消息通道
 		quitCh:      make(chan struct{}, 1), // 创建带缓冲的退出信号通道
 	}
+
+	if opts.RPCHandler == nil {
+		opts.RPCHandler = NewDefaultRPCHandler(s)
+	}
+
 	s.ServerOpts = opts
 
 	return s
@@ -64,7 +70,9 @@ free:
 	for {
 		select {
 		case rpc := <-s.rpcCh:
-			fmt.Println("rpc:", rpc)
+			if err := s.RPCHandler.HandleRPC(rpc); err != nil {
+				logrus.Error(err)
+			}
 		case <-s.quitCh: // 收到退出信号
 			break free
 		case <-ticker.C: // 定时器触发
@@ -73,16 +81,11 @@ free:
 			}
 		}
 	}
-
 	fmt.Println("Server shutdown")
 }
 
 // handleTransaction 处理收到的交易，验证签名并加入交易池
-func (s *Server) handleTransaction(tx *core.Transaction) error {
-	if err := tx.Verify(); err != nil {
-		return err
-	}
-
+func (s *Server) ProcessTransaction(from NetAddr, tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
 	if s.memPool.Has(hash) {
@@ -93,8 +96,15 @@ func (s *Server) handleTransaction(tx *core.Transaction) error {
 		return nil
 	}
 
+	//if err := tx.Verify(); err != nil {
+	//	return err
+	//}
+
+	tx.SetFirstSeen(time.Now().UnixNano())
+
 	logrus.WithFields(logrus.Fields{
-		"hash": hash,
+		"hash":           hash,
+		"mempool length": s.memPool.Len(),
 	}).Info("adding new tx to the mempool")
 
 	return s.memPool.Add(tx)

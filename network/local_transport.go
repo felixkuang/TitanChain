@@ -2,6 +2,7 @@
 package network
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 	"time"
@@ -121,7 +122,7 @@ func (t *LocalTransport) SendMessage(to NetAddr, payload []byte) error {
 	// 创建消息
 	rpc := RPC{
 		From:    t.addr,
-		Payload: payload,
+		Payload: bytes.NewReader(payload),
 	}
 
 	// 带超时的发送
