@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/felixkuang/titanchain/core"
 )
 
@@ -52,47 +54,51 @@ func (msg *Message) Bytes() []byte {
 	return buf.Bytes()
 }
 
-// RPCHandler 定义了RPC消息处理器接口
-// 负责处理收到的RPC消息
-type RPCHandler interface {
-	HandleRPC(rpc RPC) error
+// DecodedMessage 表示解码后的网络消息
+// From: 消息发送者地址
+// Data: 解码后的消息内容（如交易、区块等）
+type DecodedMessage struct {
+	From NetAddr // 发送者地址
+	Data any     // 解码后的消息内容
 }
 
-// DefaultRPCHandler 是默认的RPC消息处理器
-// 负责解码消息并分发到具体处理逻辑
-type DefaultRPCHandler struct {
-	p RPCProcessor
-}
+// RPCDecodeFunc 定义了RPC消息解码函数类型
+// 输入为RPC消息，输出为解码后的消息结构体和错误
+type RPCDecodeFunc func(RPC) (*DecodedMessage, error)
 
-// NewDefaultRPCHandler 创建默认的RPC处理器
-// p: RPCProcessor 实例
-func NewDefaultRPCHandler(p RPCProcessor) *DefaultRPCHandler {
-	return &DefaultRPCHandler{p}
-}
-
-// HandleRPC 处理收到的RPC消息
-// rpc: RPC消息
-// 返回处理过程中的错误
-func (p *DefaultRPCHandler) HandleRPC(rpc RPC) error {
+// DefaultRPCDecodeFunc 是默认的RPC消息解码函数
+// 支持交易消息的解码，后续可扩展更多类型
+// rpc: 输入的RPC消息
+// 返回解码后的消息结构体和错误
+func DefaultRPCDecodeFunc(rpc RPC) (*DecodedMessage, error) {
 	msg := Message{}
 	if err := gob.NewDecoder(rpc.Payload).Decode(&msg); err != nil {
-		return fmt.Errorf("failed to decode message from %s: %s", rpc.From, err)
+		return nil, fmt.Errorf("failed to decode message from %s: %s", rpc.From, err)
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"from": rpc.From,
+		"type": msg.Header,
+	}).Debug("new incoming message")
 
 	switch msg.Header {
 	case MessageTypeTx:
 		tx := new(core.Transaction)
 		if err := tx.Decode(core.NewGobTxDecoder(bytes.NewReader(msg.Data))); err != nil {
-			return err
+			return nil, err
 		}
-		return p.p.ProcessTransaction(rpc.From, tx)
+		return &DecodedMessage{
+			From: rpc.From,
+			Data: tx,
+		}, nil
+
 	default:
-		return fmt.Errorf("invalid message header %x", msg.Header)
+		return nil, fmt.Errorf("invalid message header %x", msg.Header)
 	}
 }
 
 // RPCProcessor 定义了RPC处理器需要实现的接口
-// 目前仅包含交易处理
+// 目前仅包含消息处理方法，参数为解码后的消息
 type RPCProcessor interface {
-	ProcessTransaction(NetAddr, *core.Transaction) error
+	ProcessMessage(*DecodedMessage) error
 }

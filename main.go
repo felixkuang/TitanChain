@@ -34,7 +34,7 @@ func main() {
 
 	// 创建并配置服务器，包含两个传输节点
 	opts := network.ServerOpts{
-		Transports: []network.Transport{trLocal, trRemote},
+		Transports: []network.Transport{trLocal},
 	}
 
 	s := network.NewServer(opts)

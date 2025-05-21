@@ -1,6 +1,7 @@
 package network
 
 import (
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -81,13 +82,34 @@ func TestLocalTransportSendMessage(t *testing.T) {
 
 	// 测试接收消息
 	rpc := <-tr2.Consume()
-	buf := make([]byte, len(msg))
-	n, err := rpc.Payload.Read(buf)
-	assert.Nil(t, err)
-	assert.Equal(t, n, len(msg))
+	b, err := ioutil.ReadAll(rpc.Payload)
 
-	assert.Equal(t, buf, msg)
+	assert.Nil(t, err)
+	assert.Equal(t, b, msg)
 	assert.Equal(t, rpc.From, tr1.Addr())
+}
+
+func TestBroadcast(t *testing.T) {
+	tra := NewLocalTransport(LocalTransportOpts{Addr: "A"})
+	trb := NewLocalTransport(LocalTransportOpts{Addr: "B"})
+	trc := NewLocalTransport(LocalTransportOpts{Addr: "C"})
+
+	tra.Connect(trb)
+	tra.Connect(trc)
+
+	msg := []byte("foo")
+	assert.Nil(t, tra.(*LocalTransport).Broadcast(msg))
+
+	rpcb := <-trb.Consume()
+	b, err := ioutil.ReadAll(rpcb.Payload)
+	assert.Nil(t, err)
+	assert.Equal(t, b, msg)
+
+	rpcc := <-trc.Consume()
+	b, err = ioutil.ReadAll(rpcc.Payload)
+	assert.Nil(t, err)
+	assert.Equal(t, b, msg)
+
 }
 
 // 测试LocalTransport的断开连接功能

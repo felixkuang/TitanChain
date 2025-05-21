@@ -2,6 +2,7 @@
 package network
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -16,12 +17,13 @@ import (
 var defaultBlockTime = 5 * time.Second
 
 // ServerOpts 定义了服务器的配置选项
-// 包括传输层、出块时间、私钥等
+// 包括传输层、出块时间、私钥、RPC解码与处理器等
 type ServerOpts struct {
-	RPCHandler RPCHandler
-	Transports []Transport        // 传输层实例列表
-	BlockTime  time.Duration      // 出块间隔
-	PrivateKey *crypto.PrivateKey // 节点私钥（为空则非验证者）
+	RPCDecodeFunc RPCDecodeFunc      // RPC消息解码函数
+	RPCProcessor  RPCProcessor       // RPC消息处理器
+	Transports    []Transport        // 传输层实例列表
+	BlockTime     time.Duration      // 出块间隔
+	PrivateKey    *crypto.PrivateKey // 节点私钥（为空则非验证者）
 }
 
 // Server 实现了区块链网络服务器
@@ -29,7 +31,6 @@ type ServerOpts struct {
 // 支持多传输层和优雅关闭
 type Server struct {
 	ServerOpts
-	blockTime   time.Duration // 出块间隔
 	memPool     *TxPool       // 内存交易池
 	isValidator bool          // 是否为验证者节点
 	rpcCh       chan RPC      // RPC消息通道，用于接收网络消息
@@ -42,20 +43,22 @@ func NewServer(opts ServerOpts) *Server {
 	if opts.BlockTime == time.Duration(0) {
 		opts.BlockTime = defaultBlockTime
 	}
+	if opts.RPCDecodeFunc == nil {
+		opts.RPCDecodeFunc = DefaultRPCDecodeFunc
+	}
 
 	s := &Server{
-		blockTime:   opts.BlockTime,
+		ServerOpts:  opts,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),         // 创建RPC消息通道
 		quitCh:      make(chan struct{}, 1), // 创建带缓冲的退出信号通道
 	}
 
-	if opts.RPCHandler == nil {
-		opts.RPCHandler = NewDefaultRPCHandler(s)
+	// 如果未指定 RPCProcessor，则默认使用自身
+	if s.RPCProcessor == nil {
+		s.RPCProcessor = s
 	}
-
-	s.ServerOpts = opts
 
 	return s
 }
@@ -64,13 +67,18 @@ func NewServer(opts ServerOpts) *Server {
 // 这个方法会阻塞直到服务器收到退出信号
 func (s *Server) Start() {
 	s.initTransports()
-	ticker := time.NewTicker(s.blockTime) // 创建定时器，每5秒触发一次
+	ticker := time.NewTicker(s.BlockTime) // 创建定时器，每5秒触发一次
 
 free:
 	for {
 		select {
 		case rpc := <-s.rpcCh:
-			if err := s.RPCHandler.HandleRPC(rpc); err != nil {
+			msg, err := s.RPCDecodeFunc(rpc)
+			if err != nil {
+				logrus.Error(err)
+			}
+
+			if err := s.RPCProcessor.ProcessMessage(msg); err != nil {
 				logrus.Error(err)
 			}
 		case <-s.quitCh: // 收到退出信号
@@ -84,8 +92,36 @@ free:
 	fmt.Println("Server shutdown")
 }
 
-// handleTransaction 处理收到的交易，验证签名并加入交易池
-func (s *Server) ProcessTransaction(from NetAddr, tx *core.Transaction) error {
+// ProcessMessage 处理解码后的网络消息
+// msg: 解码后的消息结构体
+// 根据消息类型分发到具体处理逻辑
+func (s *Server) ProcessMessage(msg *DecodedMessage) error {
+	switch t := msg.Data.(type) {
+	case *core.Transaction:
+		return s.processTransaction(t)
+	}
+	return nil
+}
+
+// broadcast 向所有传输层广播消息
+// payload: 要广播的消息内容
+// 返回广播过程中遇到的第一个错误（如有），否则返回 nil
+func (s *Server) broadcast(payload []byte) error {
+	for _, tr := range s.Transports {
+		if err := tr.Broadcast(payload); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// processTransaction 处理收到的交易，验证签名并加入交易池
+// tx: 交易指针
+// 1. 检查是否已存在
+// 2. 设置首次见到时间戳
+// 3. 日志记录并异步广播
+// 4. 加入交易池
+func (s *Server) processTransaction(tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
 	if s.memPool.Has(hash) {
@@ -107,7 +143,23 @@ func (s *Server) ProcessTransaction(from NetAddr, tx *core.Transaction) error {
 		"mempool length": s.memPool.Len(),
 	}).Info("adding new tx to the mempool")
 
+	go s.broadcastTx(tx)
+
 	return s.memPool.Add(tx)
+}
+
+// broadcastTx 将交易编码后广播到所有节点
+// tx: 交易指针
+// 返回广播过程中的错误
+func (s *Server) broadcastTx(tx *core.Transaction) error {
+	buf := &bytes.Buffer{}
+	if err := tx.Encode(core.NewGobTxEncoder(buf)); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeTx, buf.Bytes())
+
+	return s.broadcast(msg.Bytes())
 }
 
 // createNewBlock 创建新区块（简化实现，实际应包含打包交易、签名等）
