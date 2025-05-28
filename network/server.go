@@ -3,11 +3,13 @@ package network
 
 import (
 	"bytes"
-	"fmt"
+	"github.com/felixkuang/titanchain/types"
+	"os"
 	"time"
 
+	"github.com/go-kit/log"
+
 	"github.com/felixkuang/titanchain/core"
-	"github.com/sirupsen/logrus"
 
 	"github.com/felixkuang/titanchain/crypto"
 )
@@ -19,6 +21,8 @@ var defaultBlockTime = 5 * time.Second
 // ServerOpts 定义了服务器的配置选项
 // 包括传输层、出块时间、私钥、RPC解码与处理器等
 type ServerOpts struct {
+	ID            string
+	Logger        log.Logger
 	RPCDecodeFunc RPCDecodeFunc      // RPC消息解码函数
 	RPCProcessor  RPCProcessor       // RPC消息处理器
 	Transports    []Transport        // 传输层实例列表
@@ -31,7 +35,8 @@ type ServerOpts struct {
 // 支持多传输层和优雅关闭
 type Server struct {
 	ServerOpts
-	memPool     *TxPool       // 内存交易池
+	memPool     *TxPool // 内存交易池
+	chain       *core.Blockchain
 	isValidator bool          // 是否为验证者节点
 	rpcCh       chan RPC      // RPC消息通道，用于接收网络消息
 	quitCh      chan struct{} // 退出信号通道，用于优雅关闭服务器
@@ -39,16 +44,25 @@ type Server struct {
 
 // NewServer 创建一个新的服务器实例
 // opts: 服务器配置选项
-func NewServer(opts ServerOpts) *Server {
+func NewServer(opts ServerOpts) (*Server, error) {
 	if opts.BlockTime == time.Duration(0) {
 		opts.BlockTime = defaultBlockTime
 	}
 	if opts.RPCDecodeFunc == nil {
 		opts.RPCDecodeFunc = DefaultRPCDecodeFunc
 	}
+	if opts.Logger == nil {
+		opts.Logger = log.NewLogfmtLogger(os.Stderr)
+		opts.Logger = log.With(opts.Logger, "ID", opts.ID)
+	}
 
+	chain, err := core.NewBlockchain(genesisBlock())
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		ServerOpts:  opts,
+		chain:       chain,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),         // 创建RPC消息通道
@@ -60,14 +74,17 @@ func NewServer(opts ServerOpts) *Server {
 		s.RPCProcessor = s
 	}
 
-	return s
+	if s.isValidator {
+		go s.validatorLoop()
+	}
+
+	return s, nil
 }
 
 // Start 启动服务器并开始处理消息
 // 这个方法会阻塞直到服务器收到退出信号
 func (s *Server) Start() {
 	s.initTransports()
-	ticker := time.NewTicker(s.BlockTime) // 创建定时器，每5秒触发一次
 
 free:
 	for {
@@ -75,21 +92,29 @@ free:
 		case rpc := <-s.rpcCh:
 			msg, err := s.RPCDecodeFunc(rpc)
 			if err != nil {
-				logrus.Error(err)
+				s.Logger.Log("error", err)
 			}
 
 			if err := s.RPCProcessor.ProcessMessage(msg); err != nil {
-				logrus.Error(err)
+				s.Logger.Log("error", err)
 			}
 		case <-s.quitCh: // 收到退出信号
 			break free
-		case <-ticker.C: // 定时器触发
-			if s.isValidator {
-				s.createNewBlock()
-			}
 		}
 	}
-	fmt.Println("Server shutdown")
+
+	s.Logger.Log("msg", "Server is shutting down")
+}
+
+func (s *Server) validatorLoop() {
+	ticker := time.NewTicker(5 * time.Second)
+
+	s.Logger.Log("msg", "Starting validator loop", "blockTime", s.BlockTime)
+
+	for {
+		<-ticker.C
+		s.createNewBlock()
+	}
 }
 
 // ProcessMessage 处理解码后的网络消息
@@ -125,10 +150,6 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
 	if s.memPool.Has(hash) {
-		logrus.WithFields(logrus.Fields{
-			"hash": hash,
-		}).Info("transaction already in mempool")
-
 		return nil
 	}
 
@@ -138,10 +159,11 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 	tx.SetFirstSeen(time.Now().UnixNano())
 
-	logrus.WithFields(logrus.Fields{
-		"hash":           hash,
-		"mempool length": s.memPool.Len(),
-	}).Info("adding new tx to the mempool")
+	s.Logger.Log(
+		"msg", "adding new tx to mempool",
+		"hash", hash,
+		"mempoolLength", s.memPool.Len(),
+	)
 
 	go s.broadcastTx(tx)
 
@@ -162,12 +184,6 @@ func (s *Server) broadcastTx(tx *core.Transaction) error {
 	return s.broadcast(msg.Bytes())
 }
 
-// createNewBlock 创建新区块（简化实现，实际应包含打包交易、签名等）
-func (s *Server) createNewBlock() error {
-	fmt.Println("creating a new block")
-	return nil
-}
-
 // initTransports 初始化所有传输层
 // 为每个传输层启动一个goroutine来处理消息
 func (s *Server) initTransports() {
@@ -178,4 +194,38 @@ func (s *Server) initTransports() {
 			}
 		}(tr)
 	}
+}
+
+// createNewBlock 创建新区块（简化实现，实际应包含打包交易、签名等）
+func (s *Server) createNewBlock() error {
+	currentHeader, err := s.chain.GetHeader(s.chain.Height())
+	if err != nil {
+		return err
+	}
+
+	block, err := core.NewBlockFromPrevHeader(currentHeader, nil)
+	if err != nil {
+		return err
+	}
+	if err := block.Sign(*s.PrivateKey); err != nil {
+		return err
+	}
+
+	if err := s.chain.AddBlock(block); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func genesisBlock() *core.Block {
+	header := &core.Header{
+		Version:   1,
+		DataHash:  types.Hash{},
+		Height:    0,
+		Timestamp: time.Now().UnixNano(),
+	}
+
+	b, _ := core.NewBlock(header, nil)
+	return b
 }

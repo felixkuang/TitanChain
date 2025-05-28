@@ -13,14 +13,14 @@ func TestAddBlock(t *testing.T) {
 
 	lenBlocks := 1000
 	for i := 0; i < lenBlocks; i++ {
-		block := randomBlockWithSignature(t, uint32(i+1), getPrevBlockHash(t, bc, uint32(i+1)))
+		block := randomBlock(t, uint32(i+1), getPrevBlockHash(t, bc, uint32(i+1)))
 		assert.Nil(t, bc.AddBlock(block))
 	}
 
 	assert.Equal(t, bc.Height(), uint32(lenBlocks))
 	assert.Equal(t, len(bc.headers), lenBlocks+1)
 	// 添加高度已存在的区块应返回错误
-	assert.NotNil(t, bc.AddBlock(randomBlock(89, types.Hash{})))
+	assert.NotNil(t, bc.AddBlock(randomBlock(t, 89, types.Hash{})))
 }
 
 // TestNewBlockchain 测试区块链初始化和创世区块
@@ -44,7 +44,7 @@ func TestGetHeader(t *testing.T) {
 	lenBlocks := 1000
 
 	for i := 0; i < lenBlocks; i++ {
-		block := randomBlockWithSignature(t, uint32(i+1), getPrevBlockHash(t, bc, uint32(i+1)))
+		block := randomBlock(t, uint32(i+1), getPrevBlockHash(t, bc, uint32(i+1)))
 		assert.Nil(t, bc.AddBlock(block))
 		header, err := bc.GetHeader(block.Height)
 		assert.Nil(t, err)
@@ -56,14 +56,14 @@ func TestGetHeader(t *testing.T) {
 func TestAddBlockToHigh(t *testing.T) {
 	bc := newBlockchainWithGenesis(t)
 
-	assert.Nil(t, bc.AddBlock(randomBlockWithSignature(t, 1, getPrevBlockHash(t, bc, uint32(1)))))
+	assert.Nil(t, bc.AddBlock(randomBlock(t, 1, getPrevBlockHash(t, bc, uint32(1)))))
 	// 跳跃高度添加区块应返回错误
-	assert.NotNil(t, bc.AddBlock(randomBlockWithSignature(t, 3, types.Hash{})))
+	assert.NotNil(t, bc.AddBlock(randomBlock(t, 3, types.Hash{})))
 }
 
 // newBlockchainWithGenesis 辅助函数：创建带创世区块的区块链
 func newBlockchainWithGenesis(t *testing.T) *Blockchain {
-	bc, err := NewBlockchain(randomBlock(0, types.Hash{}))
+	bc, err := NewBlockchain(randomBlock(t, 0, types.Hash{}))
 	assert.Nil(t, err)
 
 	return bc

@@ -3,11 +3,13 @@ package main
 
 import (
 	"bytes"
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
 
 	"github.com/felixkuang/titanchain/core"
+	"github.com/felixkuang/titanchain/crypto"
 	"github.com/sirupsen/logrus"
 
 	"github.com/felixkuang/titanchain/network"
@@ -32,12 +34,18 @@ func main() {
 		}
 	}()
 
+	privKey := crypto.GeneratePrivateKey()
 	// 创建并配置服务器，包含两个传输节点
 	opts := network.ServerOpts{
+		PrivateKey: &privKey,
+		ID:         "LOCAL",
 		Transports: []network.Transport{trLocal},
 	}
 
-	s := network.NewServer(opts)
+	s, err := network.NewServer(opts)
+	if err != nil {
+		log.Fatal(err)
+	}
 	s.Start()
 }
 

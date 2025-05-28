@@ -3,15 +3,18 @@ package core
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/felixkuang/titanchain/crypto"
 	"github.com/felixkuang/titanchain/types"
 )
 
 // Header 表示区块链中区块的元数据结构
+// 包含版本号、数据哈希、前区块哈希、高度、时间戳
 type Header struct {
 	Version       uint32     // 协议版本号
 	DataHash      types.Hash // 区块中所有交易的Merkle根哈希
@@ -20,6 +23,7 @@ type Header struct {
 	Timestamp     int64      // 区块创建时间戳
 }
 
+// Bytes 返回区块头的二进制序列化结果
 func (h *Header) Bytes() []byte {
 	buf := &bytes.Buffer{}
 	enc := gob.NewEncoder(buf)
@@ -32,6 +36,7 @@ func (h *Header) Bytes() []byte {
 }
 
 // Block 表示区块链中的完整区块
+// 包含区块头、交易列表、验证者公钥、签名、哈希缓存
 type Block struct {
 	*Header                        // 嵌入区块头
 	Transactions []Transaction     // 区块中包含的交易列表
@@ -40,6 +45,8 @@ type Block struct {
 	hash         types.Hash        // 缓存的区块头哈希值，用于提升性能
 }
 
+// AddTransaction 向区块中添加一笔交易
+// tx: 要添加的交易指针
 func (b *Block) AddTransaction(tx *Transaction) {
 	b.Transactions = append(b.Transactions, *tx)
 }
@@ -47,11 +54,33 @@ func (b *Block) AddTransaction(tx *Transaction) {
 // NewBlock 创建一个新的区块实例
 // h: 区块头信息
 // txx: 要包含在区块中的交易列表
-func NewBlock(h *Header, txx []Transaction) *Block {
+// 返回新建的区块和可能的错误
+func NewBlock(h *Header, txx []Transaction) (*Block, error) {
 	return &Block{
 		Header:       h,
 		Transactions: txx,
+	}, nil
+}
+
+// NewBlockFromPrevHeader 基于前一区块头和交易列表创建新区块
+// prevHeader: 前一区块头
+// txx: 新区块的交易列表
+// 返回新建的区块和可能的错误
+func NewBlockFromPrevHeader(prevHeader *Header, txx []Transaction) (*Block, error) {
+	dataHash, err := CalculateDataHash(txx)
+	if err != nil {
+		return nil, err
 	}
+
+	header := &Header{
+		Version:       1,
+		Height:        prevHeader.Height + 1,
+		DataHash:      dataHash,
+		PrevBlockHash: BlockHasher{}.Hash(prevHeader),
+		Timestamp:     time.Now().UnixNano(),
+	}
+
+	return NewBlock(header, txx)
 }
 
 // Sign 使用给定的私钥对区块进行签名
@@ -80,10 +109,18 @@ func (b *Block) Verify() error {
 		return fmt.Errorf("block has invalid signature")
 	}
 
-	for _, tx := range b.Transactions {
-		if err := tx.Verify(); err != nil {
-			return err
-		}
+	//for _, tx := range b.Transactions {
+	//	if err := tx.Verify(); err != nil {
+	//		return err
+	//	}
+	//}
+
+	dataHash, err := CalculateDataHash(b.Transactions)
+	if err != nil {
+		return err
+	}
+	if dataHash != b.DataHash {
+		return fmt.Errorf("block (%s) has an invalid data hash", b.Hash(BlockHasher{}))
 	}
 
 	return nil
@@ -114,4 +151,21 @@ func (b *Block) Hash(hasher Hasher[*Header]) types.Hash {
 	}
 
 	return b.hash
+}
+
+// CalculateDataHash 计算交易列表的整体哈希（Merkle根）
+// txx: 交易列表
+// 返回交易数据的SHA256哈希和可能的错误
+func CalculateDataHash(txx []Transaction) (hash types.Hash, err error) {
+	buf := &bytes.Buffer{}
+
+	for _, tx := range txx {
+		if err = tx.Encode(NewGobTxEncoder(buf)); err != nil {
+			return
+		}
+	}
+
+	hash = sha256.Sum256(buf.Bytes())
+
+	return
 }

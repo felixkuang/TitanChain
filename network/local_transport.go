@@ -134,6 +134,9 @@ func (t *LocalTransport) SendMessage(to NetAddr, payload []byte) error {
 	}
 }
 
+// Broadcast 向所有已连接的对等节点广播消息
+// payload: 要广播的消息内容
+// 返回广播过程中遇到的第一个错误（如有），否则返回 nil
 func (t *LocalTransport) Broadcast(payload []byte) error {
 	for _, peer := range t.peers {
 		if err := t.SendMessage(peer.Addr(), payload); err != nil {

@@ -13,7 +13,7 @@ import (
 // TestSignBlock 测试区块签名功能
 func TestSignBlock(t *testing.T) {
 	privKey := crypto.GeneratePrivateKey()
-	b := randomBlock(0, types.Hash{})
+	b := randomBlock(t, 0, types.Hash{})
 
 	assert.Nil(t, b.Sign(privKey))
 	assert.NotNil(t, b.Signature)
@@ -22,7 +22,7 @@ func TestSignBlock(t *testing.T) {
 // TestVerifyBlock 测试区块签名验证功能
 func TestVerifyBlock(t *testing.T) {
 	privKey := crypto.GeneratePrivateKey()
-	b := randomBlock(0, types.Hash{})
+	b := randomBlock(t, 0, types.Hash{})
 
 	assert.Nil(t, b.Sign(privKey))
 	assert.Nil(t, b.Verify())
@@ -38,7 +38,9 @@ func TestVerifyBlock(t *testing.T) {
 }
 
 // randomBlock 辅助函数：生成指定高度和前区块哈希的区块
-func randomBlock(height uint32, prevBlockHash types.Hash) *Block {
+func randomBlock(t *testing.T, height uint32, prevBlockHash types.Hash) *Block {
+	privKey := crypto.GeneratePrivateKey()
+	tx := randomTxWithSignature(t)
 	header := &Header{
 		Version:       1,
 		PrevBlockHash: prevBlockHash,
@@ -46,15 +48,11 @@ func randomBlock(height uint32, prevBlockHash types.Hash) *Block {
 		Timestamp:     time.Now().UnixNano(),
 	}
 
-	return NewBlock(header, []Transaction{})
-}
-
-// randomBlockWithSignature 辅助函数：生成带签名的区块
-func randomBlockWithSignature(t *testing.T, height uint32, prevBlockHash types.Hash) *Block {
-	privKey := crypto.GeneratePrivateKey()
-	b := randomBlock(height, prevBlockHash)
-	tx := randomTxWithSignature(t)
-	b.AddTransaction(tx)
+	b, err := NewBlock(header, []Transaction{tx})
+	assert.Nil(t, err)
+	dataHash, err := CalculateDataHash(b.Transactions)
+	assert.Nil(t, err)
+	b.Header.DataHash = dataHash
 	assert.Nil(t, b.Sign(privKey))
 
 	return b
