@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"math/rand"
 	"strconv"
@@ -18,35 +19,54 @@ import (
 func main() {
 	// 创建两个本地传输节点，分别命名为 LOCAL 和 REMOTE
 	trLocal := network.NewLocalTransport(network.LocalTransportOpts{Addr: "LOCAL"})
-	trRemote := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE"})
+	trRemoteA := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTEA"})
+	trRemoteB := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTEB"})
+	trRemoteC := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTEC"})
 
 	// 建立双向连接
-	trLocal.Connect(trRemote)
-	trRemote.Connect(trLocal)
+	trLocal.Connect(trRemoteA)
+	trRemoteA.Connect(trRemoteB)
+	trRemoteB.Connect(trRemoteC)
+	trRemoteA.Connect(trLocal)
+
+	initRemoteServers([]network.Transport{trRemoteA, trRemoteB, trRemoteC})
 
 	// 启动一个 goroutine，定时向 LOCAL 节点发送交易
 	go func() {
 		for {
-			if err := sendTransaction(trRemote, trLocal.Addr()); err != nil {
+			if err := sendTransaction(trRemoteA, trLocal.Addr()); err != nil {
 				logrus.Error(err)
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 		}
 	}()
 
 	privKey := crypto.GeneratePrivateKey()
-	// 创建并配置服务器，包含两个传输节点
+	localServer := makeServer("LOCAL", trLocal, &privKey)
+	localServer.Start()
+}
+
+func initRemoteServers(trs []network.Transport) {
+	for i := 0; i < len(trs); i++ {
+		id := fmt.Sprintf("REMOTE_%d", i)
+		s := makeServer(id, trs[i], nil)
+		go s.Start()
+	}
+}
+
+func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network.Server {
 	opts := network.ServerOpts{
-		PrivateKey: &privKey,
-		ID:         "LOCAL",
-		Transports: []network.Transport{trLocal},
+		PrivateKey: pk,
+		ID:         id,
+		Transports: []network.Transport{tr},
 	}
 
 	s, err := network.NewServer(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
-	s.Start()
+
+	return s
 }
 
 // sendTransaction 构造并发送一笔交易到指定节点

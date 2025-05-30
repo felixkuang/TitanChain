@@ -5,14 +5,14 @@
 ### 1. block.go
 实现了区块链中区块的核心数据结构和相关功能：
 - `Header`: 区块头结构，包含版本号、数据哈希、前块哈希、高度和时间戳
-- `Block`: 完整区块结构，包含区块头、交易列表、验证者公钥和签名
+- `Block`: 完整区块结构，包含区块头、交易列表（指针切片）、验证者公钥和签名
 - 主要功能：
-  - 区块创建（`NewBlock`、`NewBlockFromPrevHeader`）
+  - 区块创建（`NewBlock`、`NewBlockFromPrevHeader`，交易列表类型为`[]*Transaction`）
   - 区块签名与验证
   - 区块编码/解码
   - 区块哈希计算
-  - 交易添加（`AddTransaction`）
-  - 交易数据哈希计算（`CalculateDataHash`）
+  - 交易添加（`AddTransaction`，支持指针类型）
+  - 交易数据哈希计算（`CalculateDataHash`，支持指针类型）
 
 ### 2. blockchain.go
 实现了区块链的核心功能：
@@ -96,7 +96,7 @@
 ### 近期计划（1-2周）
 1. 完善区块结构
    - 支持区块内交易的并行验证与执行
-   - 优化区块头与数据哈希的计算逻辑
+   - 优化区块头与数据哈希的计算逻辑，适配指针类型交易列表
    - 增强区块签名与多重签名支持
 2. 完善存储系统
    - 实现持久化存储（如LevelDB/BadgerDB）

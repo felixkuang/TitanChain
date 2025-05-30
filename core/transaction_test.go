@@ -45,9 +45,9 @@ func TestTxEncodeDecode(t *testing.T) {
 }
 
 // randomTxWithSignature 辅助函数：生成带签名的交易
-func randomTxWithSignature(t *testing.T) Transaction {
+func randomTxWithSignature(t *testing.T) *Transaction {
 	//privKey := crypto.GeneratePrivateKey()
-	tx := Transaction{
+	tx := &Transaction{
 		Data: []byte("foo"),
 	}
 	//assert.Nil(t, tx.Sign(privKey))

@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sirupsen/logrus"
+	"github.com/go-kit/log"
 )
 
 // Blockchain 表示区块链的核心数据结构
 type Blockchain struct {
+	logger    log.Logger
 	store     Storage // 区块存储接口
 	lock      sync.RWMutex
 	headers   []*Header // 所有区块头的有序列表
@@ -18,10 +19,11 @@ type Blockchain struct {
 // NewBlockchain 创建一个新的区块链实例
 // genesis: 创世区块
 // 返回新创建的区块链实例和可能发生的错误
-func NewBlockchain(genesis *Block) (*Blockchain, error) {
+func NewBlockchain(l log.Logger, genesis *Block) (*Blockchain, error) {
 	bc := &Blockchain{
 		headers: []*Header{},
 		store:   NewMemorystore(),
+		logger:  l,
 	}
 	bc.validator = NewBlockValidator(bc)
 	err := bc.addBlockWithoutValidation(genesis)
@@ -81,10 +83,12 @@ func (bc *Blockchain) addBlockWithoutValidation(b *Block) error {
 	bc.headers = append(bc.headers, b.Header)
 	defer bc.lock.Unlock()
 
-	logrus.WithFields(logrus.Fields{
-		"height": b.Height,
-		"hash":   b.Hash(BlockHasher{}),
-	}).Info("adding new block")
+	bc.logger.Log(
+		"msg", "new block",
+		"hash", b.Hash(BlockHasher{}),
+		"height", b.Height,
+		"transactions", len(b.Transactions),
+	)
 
 	return bc.store.Put(b)
 }

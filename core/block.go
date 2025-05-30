@@ -39,7 +39,7 @@ func (h *Header) Bytes() []byte {
 // 包含区块头、交易列表、验证者公钥、签名、哈希缓存
 type Block struct {
 	*Header                        // 嵌入区块头
-	Transactions []Transaction     // 区块中包含的交易列表
+	Transactions []*Transaction    // 区块中包含的交易列表
 	Validator    crypto.PublicKey  // 验证者的公钥
 	Signature    *crypto.Signature // 验证者对区块的签名
 	hash         types.Hash        // 缓存的区块头哈希值，用于提升性能
@@ -48,14 +48,14 @@ type Block struct {
 // AddTransaction 向区块中添加一笔交易
 // tx: 要添加的交易指针
 func (b *Block) AddTransaction(tx *Transaction) {
-	b.Transactions = append(b.Transactions, *tx)
+	b.Transactions = append(b.Transactions, tx)
 }
 
 // NewBlock 创建一个新的区块实例
 // h: 区块头信息
 // txx: 要包含在区块中的交易列表
 // 返回新建的区块和可能的错误
-func NewBlock(h *Header, txx []Transaction) (*Block, error) {
+func NewBlock(h *Header, txx []*Transaction) (*Block, error) {
 	return &Block{
 		Header:       h,
 		Transactions: txx,
@@ -66,7 +66,7 @@ func NewBlock(h *Header, txx []Transaction) (*Block, error) {
 // prevHeader: 前一区块头
 // txx: 新区块的交易列表
 // 返回新建的区块和可能的错误
-func NewBlockFromPrevHeader(prevHeader *Header, txx []Transaction) (*Block, error) {
+func NewBlockFromPrevHeader(prevHeader *Header, txx []*Transaction) (*Block, error) {
 	dataHash, err := CalculateDataHash(txx)
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (b *Block) Hash(hasher Hasher[*Header]) types.Hash {
 // CalculateDataHash 计算交易列表的整体哈希（Merkle根）
 // txx: 交易列表
 // 返回交易数据的SHA256哈希和可能的错误
-func CalculateDataHash(txx []Transaction) (hash types.Hash, err error) {
+func CalculateDataHash(txx []*Transaction) (hash types.Hash, err error) {
 	buf := &bytes.Buffer{}
 
 	for _, tx := range txx {
