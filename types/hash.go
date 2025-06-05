@@ -2,7 +2,6 @@
 package types
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 )
@@ -47,19 +46,4 @@ func HashFromBytes(b []byte) Hash {
 		value[i] = b[i]
 	}
 	return Hash(value)
-}
-
-// RandomBytes 使用crypto/rand生成指定大小的随机字节切片
-// size: 需要生成的随机字节数
-func RandomBytes(size int) []byte {
-	token := make([]byte, size)
-	rand.Read(token)
-
-	return token
-}
-
-// RandomHash 生成一个随机的32字节哈希值
-// 使用crypto/rand确保安全的随机数生成
-func RandomHash() Hash {
-	return HashFromBytes(RandomBytes(32))
 }

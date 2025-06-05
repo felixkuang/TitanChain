@@ -10,14 +10,13 @@ import (
 )
 
 // Transaction 表示区块链中的一个交易
-// 包含原始数据、发起者公钥、签名、哈希、首次见到时间戳
+// 包含原始数据、发起者公钥、签名、哈希
 // 支持签名、哈希、验证、序列化等操作
 type Transaction struct {
 	Data      []byte            // 交易的原始数据
 	From      crypto.PublicKey  // 交易发起者的公钥
 	Signature *crypto.Signature // 交易的数字签名
 	hash      types.Hash        // 交易哈希缓存
-	firstSeen int64             // 首次见到时间戳
 }
 
 // NewTransaction 创建一个新的交易实例
@@ -77,14 +76,4 @@ func (tx *Transaction) Decode(dec Decoder[*Transaction]) error {
 // enc: 编码器实例
 func (tx *Transaction) Encode(enc Encoder[*Transaction]) error {
 	return enc.Encode(tx)
-}
-
-// SetFirstSeen 设置交易首次见到的时间戳
-func (tx *Transaction) SetFirstSeen(t int64) {
-	tx.firstSeen = t
-}
-
-// FirstSeen 获取交易首次见到的时间戳
-func (tx *Transaction) FirstSeen() int64 {
-	return tx.firstSeen
 }

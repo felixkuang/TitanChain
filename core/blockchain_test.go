@@ -1,9 +1,9 @@
 package core
 
 import (
-	"github.com/go-kit/log"
-	"os"
 	"testing"
+
+	"github.com/go-kit/log"
 
 	"github.com/felixkuang/titanchain/types"
 	"github.com/stretchr/testify/assert"
@@ -65,7 +65,7 @@ func TestAddBlockToHigh(t *testing.T) {
 
 // newBlockchainWithGenesis 辅助函数：创建带创世区块的区块链
 func newBlockchainWithGenesis(t *testing.T) *Blockchain {
-	bc, err := NewBlockchain(log.NewLogfmtLogger(os.Stderr), randomBlock(t, 0, types.Hash{}))
+	bc, err := NewBlockchain(log.NewNopLogger(), randomBlock(t, 0, types.Hash{}))
 	assert.Nil(t, err)
 
 	return bc

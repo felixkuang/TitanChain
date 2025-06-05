@@ -3,9 +3,10 @@ package network
 
 import (
 	"bytes"
-	"github.com/felixkuang/titanchain/types"
 	"os"
 	"time"
+
+	"github.com/felixkuang/titanchain/types"
 
 	"github.com/go-kit/log"
 
@@ -35,7 +36,7 @@ type ServerOpts struct {
 // 支持多传输层和优雅关闭
 type Server struct {
 	ServerOpts
-	memPool     *TxPool // 内存交易池
+	mempool     *TxPool // 内存交易池
 	chain       *core.Blockchain
 	isValidator bool          // 是否为验证者节点
 	rpcCh       chan RPC      // RPC消息通道，用于接收网络消息
@@ -63,7 +64,7 @@ func NewServer(opts ServerOpts) (*Server, error) {
 	s := &Server{
 		ServerOpts:  opts,
 		chain:       chain,
-		memPool:     NewTxPool(),
+		mempool:     NewTxPool(1000),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),         // 创建RPC消息通道
 		quitCh:      make(chan struct{}, 1), // 创建带缓冲的退出信号通道
@@ -125,6 +126,7 @@ func (s *Server) ProcessMessage(msg *DecodedMessage) error {
 	case *core.Transaction:
 		return s.processTransaction(t)
 	}
+
 	return nil
 }
 
@@ -149,7 +151,7 @@ func (s *Server) broadcast(payload []byte) error {
 func (s *Server) processTransaction(tx *core.Transaction) error {
 	hash := tx.Hash(core.TxHasher{})
 
-	if s.memPool.Has(hash) {
+	if s.mempool.Contains(hash) {
 		return nil
 	}
 
@@ -157,17 +159,17 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 	//	return err
 	//}
 
-	tx.SetFirstSeen(time.Now().UnixNano())
-
 	s.Logger.Log(
 		"msg", "adding new tx to mempool",
 		"hash", hash,
-		"mempoolLength", s.memPool.Len(),
+		"mempoolPending", s.mempool.PendingCount(),
 	)
 
 	go s.broadcastTx(tx)
 
-	return s.memPool.Add(tx)
+	s.mempool.Add(tx)
+
+	return nil
 }
 
 // 广播区块
@@ -209,11 +211,11 @@ func (s *Server) createNewBlock() error {
 		return err
 	}
 
-	// For now we are going to use all transactions that are in the mempool
+	// For now we are going to use all transactions that are in the pending pool
 	// Later on when we know the internal structure of our transaction
 	// we will implement some kind of complexity function to determine how
 	// many transactions can be included in a block.
-	txx := s.memPool.Transactions()
+	txx := s.mempool.Pending()
 
 	block, err := core.NewBlockFromPrevHeader(currentHeader, txx)
 	if err != nil {
@@ -228,7 +230,9 @@ func (s *Server) createNewBlock() error {
 		return err
 	}
 
-	s.memPool.Flush()
+	// TODO(@anthdm): pending pool of tx should only reflect on validator nodes.
+	// Right now "normal nodes" does not have their pending pool cleared.
+	s.mempool.ClearPending()
 
 	return nil
 }
