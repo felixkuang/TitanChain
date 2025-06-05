@@ -7,6 +7,10 @@ import (
 	"io"
 )
 
+//Add commentMore actions
+// For now we GOB encoding is used for fast bootstrapping of the project
+// in a later phase I'm considering using Protobuffers as default encoding / decoding.
+
 // Encoder 定义了通用的编码器接口
 // T 是要编码的数据类型
 // Encode 将数据编码并写入底层 Writer，返回可能的错误
