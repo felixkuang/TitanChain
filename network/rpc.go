@@ -17,8 +17,10 @@ import (
 type MessageType byte
 
 const (
-	MessageTypeTx    MessageType = iota + 1 // 交易消息
-	MessageTypeBlock                        // 区块消息
+	MessageTypeTx        MessageType = 0x1
+	MessageTypeBlock     MessageType = 0x2
+	MessageTypeGetBlocks MessageType = 0x3 // 区块消息
+
 )
 
 // RPC 表示远程过程调用的消息结构
@@ -90,6 +92,16 @@ func DefaultRPCDecodeFunc(rpc RPC) (*DecodedMessage, error) {
 		return &DecodedMessage{
 			From: rpc.From,
 			Data: tx,
+		}, nil
+	case MessageTypeBlock:
+		block := new(core.Block)
+		if err := block.Decode(core.NewGobBlockDecoder(bytes.NewReader(msg.Data))); err != nil {
+			return nil, err
+		}
+
+		return &DecodedMessage{
+			From: rpc.From,
+			Data: block,
 		}, nil
 
 	default:

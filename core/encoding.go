@@ -34,7 +34,6 @@ type GobTxEncoder struct {
 // NewGobTxEncoder 创建一个 gob 交易编码器
 // w: 输出 Writer
 func NewGobTxEncoder(w io.Writer) *GobTxEncoder {
-	gob.Register(elliptic.P256())
 	return &GobTxEncoder{w: w}
 }
 
@@ -52,11 +51,62 @@ type GobTxDecoder struct {
 // NewGobTxDecoder 创建一个 gob 交易解码器
 // r: 输入 Reader
 func NewGobTxDecoder(r io.Reader) *GobTxDecoder {
-	gob.Register(elliptic.P256())
 	return &GobTxDecoder{r: r}
 }
 
 // Decode 从 Reader 解码 gob 格式的交易
 func (e *GobTxDecoder) Decode(tx *Transaction) error {
 	return gob.NewDecoder(e.r).Decode(tx)
+}
+
+// GobBlockEncoder 实现了基于 gob 的区块编码器
+// 支持将 Block 编码为二进制流
+// w: 输出 Writer
+// 用于将区块结构序列化为 gob 格式，便于网络传输或持久化存储
+type GobBlockEncoder struct {
+	w io.Writer // gob 编码输出的 Writer
+}
+
+// NewGobBlockEncoder 创建一个 gob 区块编码器
+// w: 输出 Writer
+// 返回 GobBlockEncoder 指针
+func NewGobBlockEncoder(w io.Writer) *GobBlockEncoder {
+	return &GobBlockEncoder{
+		w: w,
+	}
+}
+
+// Encode 将区块编码为 gob 格式并写入 Writer
+// b: 待编码的区块指针
+// 返回可能的错误
+func (enc *GobBlockEncoder) Encode(b *Block) error {
+	return gob.NewEncoder(enc.w).Encode(b)
+}
+
+// GobBlockDecoder 实现了基于 gob 的区块解码器
+// 支持从二进制流解码 Block
+// r: 输入 Reader
+// 用于将 gob 格式的区块数据反序列化为 Block 结构
+type GobBlockDecoder struct {
+	r io.Reader // gob 解码输入的 Reader
+}
+
+// NewGobBlockDecoder 创建一个 gob 区块解码器
+// r: 输入 Reader
+// 返回 GobBlockDecoder 指针
+func NewGobBlockDecoder(r io.Reader) *GobBlockDecoder {
+	return &GobBlockDecoder{
+		r: r,
+	}
+}
+
+// Decode 从 Reader 解码 gob 格式的区块
+// b: 解码目标区块指针
+// 返回可能的错误
+func (dec *GobBlockDecoder) Decode(b *Block) error {
+	return gob.NewDecoder(dec.r).Decode(b)
+}
+
+func init() {
+	gob.Register(elliptic.P256())
 }

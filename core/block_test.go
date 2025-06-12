@@ -37,6 +37,16 @@ func TestVerifyBlock(t *testing.T) {
 	assert.NotNil(t, b.Verify())
 }
 
+func TestDecodeEncodeBlock(t *testing.T) {
+	//b := randomBlock(t, 1, types.Hash{})
+	//buf := &bytes.Buffer{}
+	//assert.Nil(t, b.Encode(NewGobBlockEncoder(buf)))
+	//
+	//bDecode := new(Block)
+	//assert.Nil(t, bDecode.Decode(NewGobBlockDecoder(buf)))
+	//assert.Equal(t, b, bDecode)
+}
+
 // randomBlock 辅助函数：生成指定高度和前区块哈希的区块
 func randomBlock(t *testing.T, height uint32, prevBlockHash types.Hash) *Block {
 	privKey := crypto.GeneratePrivateKey()

@@ -6,11 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
-	"io"
-	"time"
-
 	"github.com/felixkuang/titanchain/crypto"
 	"github.com/felixkuang/titanchain/types"
+	"time"
 )
 
 // Header 表示区块链中区块的元数据结构
@@ -45,12 +43,6 @@ type Block struct {
 	hash         types.Hash        // 缓存的区块头哈希值，用于提升性能
 }
 
-// AddTransaction 向区块中添加一笔交易
-// tx: 要添加的交易指针
-func (b *Block) AddTransaction(tx *Transaction) {
-	b.Transactions = append(b.Transactions, tx)
-}
-
 // NewBlock 创建一个新的区块实例
 // h: 区块头信息
 // txx: 要包含在区块中的交易列表
@@ -81,6 +73,12 @@ func NewBlockFromPrevHeader(prevHeader *Header, txx []*Transaction) (*Block, err
 	}
 
 	return NewBlock(header, txx)
+}
+
+// AddTransaction 向区块中添加一笔交易
+// tx: 要添加的交易指针
+func (b *Block) AddTransaction(tx *Transaction) {
+	b.Transactions = append(b.Transactions, tx)
 }
 
 // Sign 使用给定的私钥对区块进行签名
@@ -130,7 +128,7 @@ func (b *Block) Verify() error {
 // r: 输入流
 // dec: 解码器实例
 // 返回解码过程中可能发生的错误
-func (b *Block) Decode(r io.Reader, dec Decoder[*Block]) error {
+func (b *Block) Decode(dec Decoder[*Block]) error {
 	return dec.Decode(b)
 }
 
@@ -138,7 +136,7 @@ func (b *Block) Decode(r io.Reader, dec Decoder[*Block]) error {
 // w: 输出流
 // enc: 编码器实例
 // 返回编码过程中可能发生的错误
-func (b *Block) Encode(w io.Writer, enc Encoder[*Block]) error {
+func (b *Block) Encode(enc Encoder[*Block]) error {
 	return enc.Encode(b)
 }
 

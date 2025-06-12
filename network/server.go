@@ -108,13 +108,16 @@ free:
 }
 
 func (s *Server) validatorLoop() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(s.BlockTime)
 
 	s.Logger.Log("msg", "Starting validator loop", "blockTime", s.BlockTime)
 
 	for {
 		<-ticker.C
-		s.createNewBlock()
+		err := s.createNewBlock()
+		if err != nil {
+			s.Logger.Log("error", err).Error()
+		}
 	}
 }
 
@@ -125,6 +128,8 @@ func (s *Server) ProcessMessage(msg *DecodedMessage) error {
 	switch t := msg.Data.(type) {
 	case *core.Transaction:
 		return s.processTransaction(t)
+	case *core.Block:
+		return s.processBlock(t)
 	}
 
 	return nil
@@ -139,6 +144,21 @@ func (s *Server) broadcast(payload []byte) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *Server) processBlock(b *core.Block) error {
+	if err := s.chain.AddBlock(b); err != nil {
+		return err
+	}
+
+	go func() {
+		err := s.broadcastBlock(b)
+		if err != nil {
+			s.Logger.Log("error", err)
+		}
+	}()
+
 	return nil
 }
 
@@ -159,13 +179,18 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 	//	return err
 	//}
 
-	s.Logger.Log(
-		"msg", "adding new tx to mempool",
-		"hash", hash,
-		"mempoolPending", s.mempool.PendingCount(),
-	)
+	//s.Logger.Log(
+	//	"msg", "adding new tx to mempool",
+	//	"hash", hash,
+	//	"mempoolPending", s.mempool.PendingCount(),
+	//)
 
-	go s.broadcastTx(tx)
+	go func() {
+		err := s.broadcastTx(tx)
+		if err != nil {
+			s.Logger.Log("error", err)
+		}
+	}()
 
 	s.mempool.Add(tx)
 
@@ -174,8 +199,13 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 
 // 广播区块
 func (s *Server) broadcastBlock(b *core.Block) error {
-	// 返回nil表示成功
-	return nil
+	buf := &bytes.Buffer{}
+	if err := b.Encode(core.NewGobBlockEncoder(buf)); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeBlock, []byte("block"))
+	return s.broadcast(msg.Bytes())
 }
 
 // broadcastTx 将交易编码后广播到所有节点
@@ -233,6 +263,13 @@ func (s *Server) createNewBlock() error {
 	// TODO(@anthdm): pending pool of tx should only reflect on validator nodes.
 	// Right now "normal nodes" does not have their pending pool cleared.
 	s.mempool.ClearPending()
+
+	go func() {
+		err := s.broadcastBlock(block)
+		if err != nil {
+			s.Logger.Log("error", err)
+		}
+	}()
 
 	return nil
 }
