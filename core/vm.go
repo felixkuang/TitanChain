@@ -1,11 +1,13 @@
 package core
 
+import "encoding/binary"
+
 // Instruction 表示虚拟机支持的指令类型。
 type Instruction byte
 
 const (
-	// InstrPush 表示将数据压入栈的指令。
-	InstrPush Instruction = 0x0a // 10
+	// InstrPushInt 表示将数据压入栈的指令。
+	InstrPushInt Instruction = 0x0a // 10
 	// InstrAdd 表示对栈顶两个元素进行加法操作的指令。
 	InstrAdd Instruction = 0x0b // 11
 	// InstrPushByte 表示将单字节数据压入栈的指令。
@@ -13,7 +15,8 @@ const (
 	// InstrPack 表示将多个字节打包为字节切片的指令。
 	InstrPack Instruction = 0x0d
 	// InstrSub 表示对栈顶两个元素进行减法操作的指令。
-	InstrSub Instruction = 0x0e // 14
+	InstrSub   Instruction = 0x0e // 14
+	InstrStore Instruction = 0x0f
 )
 
 // Stack 表示虚拟机的操作数栈，支持任意类型元素的入栈和出栈操作。
@@ -51,17 +54,19 @@ func (s *Stack) Pop() any {
 
 // VM 表示一个简单的字节码虚拟机，用于执行智能合约或脚本。
 type VM struct {
-	data  []byte // 待执行的字节码数据
-	ip    int    // 指令指针，指向当前执行的指令位置
-	stack *Stack
+	data          []byte // 待执行的字节码数据
+	ip            int    // 指令指针，指向当前执行的指令位置
+	stack         *Stack
+	contractState *State
 }
 
 // NewVM 创建一个新的虚拟机实例，data 为待执行的字节码数据。
-func NewVM(data []byte) *VM {
+func NewVM(data []byte, contractState *State) *VM {
 	return &VM{
-		data:  data,
-		ip:    0,
-		stack: NewStack(128),
+		contractState: contractState,
+		data:          data,
+		ip:            0,
+		stack:         NewStack(128),
 	}
 }
 
@@ -90,7 +95,26 @@ func (vm *VM) Run() error {
 // 返回 error 表示执行过程中遇到的错误。
 func (vm *VM) Exec(instr Instruction) error {
 	switch instr {
-	case InstrPush:
+	case InstrStore:
+		var (
+			key             = vm.stack.Pop().([]byte)
+			value           = vm.stack.Pop()
+			serializedValue []byte
+		)
+
+		switch v := value.(type) {
+		case int:
+			serializedValue = serializeInt64(int64(v))
+		default:
+			panic("TODO: unknown type")
+		}
+
+		err := vm.contractState.Put(key, serializedValue)
+		if err != nil {
+			return err
+		}
+
+	case InstrPushInt:
 		vm.stack.Push(int(vm.data[vm.ip-1]))
 
 	case InstrPushByte:
@@ -120,4 +144,16 @@ func (vm *VM) Exec(instr Instruction) error {
 	}
 
 	return nil
+}
+
+func serializeInt64(value int64) []byte {
+	buf := make([]byte, 8)
+
+	binary.LittleEndian.PutUint64(buf, uint64(value))
+
+	return buf
+}
+
+func deserializeInt64(b []byte) int64 {
+	return int64(binary.LittleEndian.Uint64(b))
 }

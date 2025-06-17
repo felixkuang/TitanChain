@@ -14,6 +14,8 @@ type Blockchain struct {
 	lock      sync.RWMutex
 	headers   []*Header // 所有区块头的有序列表
 	validator Validator // 区块验证器
+	// TODO: make this an interface.
+	contractState *State
 }
 
 // NewBlockchain 创建一个新的区块链实例
@@ -21,9 +23,10 @@ type Blockchain struct {
 // 返回新创建的区块链实例和可能发生的错误
 func NewBlockchain(l log.Logger, genesis *Block) (*Blockchain, error) {
 	bc := &Blockchain{
-		headers: []*Header{},
-		store:   NewMemorystore(),
-		logger:  l,
+		contractState: NewState(),
+		headers:       []*Header{},
+		store:         NewMemorystore(),
+		logger:        l,
 	}
 	bc.validator = NewBlockValidator(bc)
 	err := bc.addBlockWithoutValidation(genesis)
@@ -48,12 +51,12 @@ func (bc *Blockchain) AddBlock(b *Block) error {
 	for _, tx := range b.Transactions {
 		bc.logger.Log("msg", "executing code", "len", len(tx.Data), "hash", tx.Hash(&TxHasher{}))
 
-		vm := NewVM(tx.Data)
+		vm := NewVM(tx.Data, bc.contractState)
 		if err := vm.Run(); err != nil {
 			return err
 		}
 
-		bc.logger.Log("vm result", vm.stack.data[vm.stack.sp])
+		fmt.Printf("STATE: %+v\n", vm.contractState)
 	}
 
 	return bc.addBlockWithoutValidation(b)
