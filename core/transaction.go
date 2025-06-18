@@ -14,7 +14,7 @@ import (
 // 支持签名、哈希、验证、序列化等操作
 type Transaction struct {
 	Data      []byte            // 交易的原始数据
-	From      crypto.PublicKey  // 交易发起者的公钥
+	From      []byte            // 交易发起者的公钥
 	Signature *crypto.Signature // 交易的数字签名
 	hash      types.Hash        // 交易哈希缓存
 }
@@ -36,7 +36,7 @@ func (tx *Transaction) Sign(privKey crypto.PrivateKey) error {
 		return err
 	}
 
-	tx.From = privKey.PublicKey()
+	tx.From = privKey.PublicKey().ToSlice()
 	tx.Signature = sig
 
 	return nil
@@ -59,7 +59,12 @@ func (tx *Transaction) Verify() error {
 		return fmt.Errorf("transaction has no signature")
 	}
 
-	if !tx.Signature.Verify(tx.From, tx.Data) {
+	publicKey, err := crypto.ToPublicKey(tx.From)
+	if err != nil {
+		return err
+	}
+
+	if !tx.Signature.Verify(publicKey, tx.Data) {
 		return fmt.Errorf("invalid transaction signature")
 	}
 

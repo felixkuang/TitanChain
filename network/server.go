@@ -175,9 +175,9 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 		return nil
 	}
 
-	//if err := tx.Verify(); err != nil {
-	//	return err
-	//}
+	if err := tx.Verify(); err != nil {
+		return err
+	}
 
 	//s.Logger.Log(
 	//	"msg", "adding new tx to mempool",
@@ -204,7 +204,7 @@ func (s *Server) broadcastBlock(b *core.Block) error {
 		return err
 	}
 
-	msg := NewMessage(MessageTypeBlock, []byte("block"))
+	msg := NewMessage(MessageTypeBlock, buf.Bytes())
 	return s.broadcast(msg.Bytes())
 }
 

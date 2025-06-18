@@ -38,7 +38,7 @@ func (h *Header) Bytes() []byte {
 type Block struct {
 	*Header                        // 嵌入区块头
 	Transactions []*Transaction    // 区块中包含的交易列表
-	Validator    crypto.PublicKey  // 验证者的公钥
+	Validator    []byte            // 验证者的公钥
 	Signature    *crypto.Signature // 验证者对区块的签名
 	hash         types.Hash        // 缓存的区块头哈希值，用于提升性能
 }
@@ -90,7 +90,7 @@ func (b *Block) Sign(privKey crypto.PrivateKey) error {
 		return err
 	}
 
-	b.Validator = privKey.PublicKey()
+	b.Validator = privKey.PublicKey().ToSlice()
 	b.Signature = sig
 
 	return nil
@@ -103,15 +103,20 @@ func (b *Block) Verify() error {
 		return fmt.Errorf("block has no signature")
 	}
 
-	if !b.Signature.Verify(b.Validator, b.Header.Bytes()) {
+	publicKey, err := crypto.ToPublicKey(b.Validator)
+	if err != nil {
+		return err
+	}
+
+	if !b.Signature.Verify(publicKey, b.Header.Bytes()) {
 		return fmt.Errorf("block has invalid signature")
 	}
 
-	//for _, tx := range b.Transactions {
-	//	if err := tx.Verify(); err != nil {
-	//		return err
-	//	}
-	//}
+	for _, tx := range b.Transactions {
+		if err := tx.Verify(); err != nil {
+			return err
+		}
+	}
 
 	dataHash, err := CalculateDataHash(b.Transactions)
 	if err != nil {

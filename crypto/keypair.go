@@ -6,9 +6,18 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"math/big"
 
 	"github.com/felixkuang/titanchain/types"
+)
+
+var (
+	ErrInvalidPublicKey = errors.New("invalid public key length")
+)
+
+const (
+	PublicKeyLength = 33
 )
 
 // PrivateKey 封装了ECDSA私钥
@@ -59,10 +68,27 @@ type PublicKey struct {
 	Key *ecdsa.PublicKey // 底层ECDSA公钥
 }
 
-// ToSlice 将公钥转换为字节切片
-// 使用压缩格式进行编码
+// ToSlice 将公钥转换为字节切片（压缩格式）
+// 使用elliptic.MarshalCompressed进行编码，便于网络传输和存储
 func (k PublicKey) ToSlice() []byte {
-	return elliptic.MarshalCompressed(k.Key, k.Key.X, k.Key.Y)
+	return elliptic.MarshalCompressed(elliptic.P256(), k.Key.X, k.Key.Y)
+}
+
+// ToPublicKey 从压缩字节切片还原公钥
+// 参数：
+//   - b: 压缩格式的公钥字节切片
+//
+// 返回：
+//   - 还原后的PublicKey对象和错误信息
+func ToPublicKey(b []byte) (PublicKey, error) {
+	if len(b) != PublicKeyLength {
+		return PublicKey{}, ErrInvalidPublicKey
+	}
+	x, y := elliptic.UnmarshalCompressed(elliptic.P256(), b)
+	if x == nil || y == nil {
+		return PublicKey{}, ErrInvalidPublicKey
+	}
+	return PublicKey{Key: &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}}, nil
 }
 
 // Address 从公钥生成地址
