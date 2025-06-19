@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"time"
@@ -17,17 +18,22 @@ import (
 func main() {
 	// 创建两个本地传输节点，分别命名为 LOCAL 和 REMOTE
 	trLocal := network.NewLocalTransport(network.LocalTransportOpts{Addr: "LOCAL"})
-	trRemoteA := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTEA"})
-	trRemoteB := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTEB"})
-	trRemoteC := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTEC"})
+	trRemoteA := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_A"})
+	trRemoteB := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_B"})
+	trRemoteC := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_C"})
 
 	// 建立双向连接
 	trLocal.Connect(trRemoteA)
 	trRemoteA.Connect(trRemoteB)
 	trRemoteB.Connect(trRemoteC)
+	trRemoteB.Connect(trRemoteA)
 	trRemoteA.Connect(trLocal)
 
 	initRemoteServers([]network.Transport{trRemoteA, trRemoteB, trRemoteC})
+
+	if err := sendGetStatusMessage(trRemoteA, "REMOTE_B"); err != nil {
+		log.Fatal(err)
+	}
 
 	// 启动一个 goroutine，定时向 LOCAL 节点发送交易
 	go func() {
@@ -64,6 +70,7 @@ func initRemoteServers(trs []network.Transport) {
 
 func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network.Server {
 	opts := network.ServerOpts{
+		Transport:  tr,
 		PrivateKey: pk,
 		ID:         id,
 		Transports: []network.Transport{tr},
@@ -75,6 +82,20 @@ func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network
 	}
 
 	return s
+}
+
+func sendGetStatusMessage(tr network.Transport, to network.NetAddr) error {
+	var (
+		getStatusMsg = new(network.GetStatusMessage)
+		buf          = new(bytes.Buffer)
+	)
+
+	if err := gob.NewEncoder(buf).Encode(getStatusMsg); err != nil {
+		return err
+	}
+	msg := network.NewMessage(network.MessageTypeGetStatus, buf.Bytes())
+
+	return tr.SendMessage(to, msg.Bytes())
 }
 
 // sendTransaction 构造并发送一笔交易到指定节点

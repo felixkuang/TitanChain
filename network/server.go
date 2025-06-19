@@ -3,6 +3,8 @@ package network
 
 import (
 	"bytes"
+	"encoding/gob"
+	"fmt"
 	"os"
 	"time"
 
@@ -23,6 +25,7 @@ var defaultBlockTime = 5 * time.Second
 // 包括传输层、出块时间、私钥、RPC解码与处理器等
 type ServerOpts struct {
 	ID            string
+	Transport     Transport
 	Logger        log.Logger
 	RPCDecodeFunc RPCDecodeFunc      // RPC消息解码函数
 	RPCProcessor  RPCProcessor       // RPC消息处理器
@@ -79,6 +82,15 @@ func NewServer(opts ServerOpts) (*Server, error) {
 		go s.validatorLoop()
 	}
 
+	// tr := s.Transports[0].(*LocalTransport)
+
+	// fmt.Printf("%+v\n", tr.peers)
+	// for _, tr := range s.Transports {
+	// 	if err := s.sendGetStatusMessage(tr); err != nil {
+	// 		s.Logger.Log("send get status error", err)
+	// 	}
+	// }
+
 	return s, nil
 }
 
@@ -130,6 +142,29 @@ func (s *Server) ProcessMessage(msg *DecodedMessage) error {
 		return s.processTransaction(t)
 	case *core.Block:
 		return s.processBlock(t)
+	case *GetStatusMessage:
+		return s.processGetStatusMessage(msg.From, t)
+	case *StatusMessage:
+		return s.processStatusMessage(msg.From, t)
+	}
+
+	return nil
+}
+
+// TODO: Remove the logic from the main function to here
+// Normally Transport which is our own transport should do the trick.
+func (s *Server) sendGetStatusMessage(tr Transport) error {
+	var (
+		getStatusMsg = new(GetStatusMessage)
+		buf          = new(bytes.Buffer)
+	)
+	if err := gob.NewEncoder(buf).Encode(getStatusMsg); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeGetStatus, buf.Bytes())
+	if err := tr.SendMessage(tr.Addr(), msg.Bytes()); err != nil {
+		return err
 	}
 
 	return nil
@@ -147,6 +182,43 @@ func (s *Server) broadcast(payload []byte) error {
 	return nil
 }
 
+// processStatusMessage 处理收到的 StatusMessage 消息
+// from: 发送方网络地址
+// data: 状态消息内容
+// 主要用于节点间同步当前区块高度和节点ID
+func (s *Server) processStatusMessage(from NetAddr, data *StatusMessage) error {
+	fmt.Printf("=> received GetStatus response msg from %s => %+v\n", from, data)
+
+	return nil
+}
+
+// processGetStatusMessage 处理收到的 GetStatusMessage 消息
+// from: 发送方网络地址
+// data: GetStatus 消息内容
+// 主要用于响应节点状态请求，返回当前节点的区块高度和ID
+func (s *Server) processGetStatusMessage(from NetAddr, data *GetStatusMessage) error {
+	fmt.Printf("=> received Getstatus msg from %s => %+v\n", from, data)
+
+	statusMessage := &StatusMessage{
+		CurrentHeight: s.chain.Height(),
+		ID:            s.ID,
+	}
+
+	buf := new(bytes.Buffer)
+	if err := gob.NewEncoder(buf).Encode(statusMessage); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeStatus, buf.Bytes())
+
+	// 通过传输层将状态消息发送给请求方
+	return s.Transport.SendMessage(from, msg.Bytes())
+}
+
+// processBlock 处理收到的区块消息
+// b: 区块指针
+// 1. 将区块添加到本地区块链
+// 2. 异步广播区块到其他节点
 func (s *Server) processBlock(b *core.Block) error {
 	if err := s.chain.AddBlock(b); err != nil {
 		return err
@@ -160,6 +232,19 @@ func (s *Server) processBlock(b *core.Block) error {
 	}()
 
 	return nil
+}
+
+// broadcastBlock 将区块编码后广播到所有节点
+// b: 区块指针
+// 返回广播过程中的错误
+func (s *Server) broadcastBlock(b *core.Block) error {
+	buf := &bytes.Buffer{}
+	if err := b.Encode(core.NewGobBlockEncoder(buf)); err != nil {
+		return err
+	}
+
+	msg := NewMessage(MessageTypeBlock, buf.Bytes())
+	return s.broadcast(msg.Bytes())
 }
 
 // processTransaction 处理收到的交易，验证签名并加入交易池
@@ -197,17 +282,6 @@ func (s *Server) processTransaction(tx *core.Transaction) error {
 	return nil
 }
 
-// 广播区块
-func (s *Server) broadcastBlock(b *core.Block) error {
-	buf := &bytes.Buffer{}
-	if err := b.Encode(core.NewGobBlockEncoder(buf)); err != nil {
-		return err
-	}
-
-	msg := NewMessage(MessageTypeBlock, buf.Bytes())
-	return s.broadcast(msg.Bytes())
-}
-
 // broadcastTx 将交易编码后广播到所有节点
 // tx: 交易指针
 // 返回广播过程中的错误
@@ -223,7 +297,7 @@ func (s *Server) broadcastTx(tx *core.Transaction) error {
 }
 
 // initTransports 初始化所有传输层
-// 为每个传输层启动一个goroutine来处理消息
+// 为每个传输层启动 goroutine 持续接收消息并转发到服务器 RPC 通道
 func (s *Server) initTransports() {
 	for _, tr := range s.Transports {
 		go func(tr Transport) {
@@ -260,7 +334,7 @@ func (s *Server) createNewBlock() error {
 		return err
 	}
 
-	// TODO(@anthdm): pending pool of tx should only reflect on validator nodes.
+	// TODO: pending pool of tx should only reflect on validator nodes.
 	// Right now "normal nodes" does not have their pending pool cleared.
 	s.mempool.ClearPending()
 
@@ -274,7 +348,8 @@ func (s *Server) createNewBlock() error {
 	return nil
 }
 
-// 生成创世区块
+// genesisBlock 生成创世区块
+// 返回一个初始化的区块指针，包含默认头部信息
 func genesisBlock() *core.Block {
 	header := &core.Header{
 		Version:   1,
