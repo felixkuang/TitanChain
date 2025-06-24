@@ -114,6 +114,10 @@ func (t *LocalTransport) SendMessage(to NetAddr, payload []byte) error {
 		return &TransportError{"传输层未运行"}
 	}
 
+	if t.addr == to {
+		return &TransportError{"不能向自身发送消息"}
+	}
+
 	peer, ok := t.peers[to]
 	if !ok {
 		return fmt.Errorf("%s: could not send message to unknown peer %s", t.addr, to)

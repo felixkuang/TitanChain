@@ -5,58 +5,43 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"log"
-	"time"
-
 	"github.com/felixkuang/titanchain/core"
 	"github.com/felixkuang/titanchain/crypto"
-	"github.com/sirupsen/logrus"
-
 	"github.com/felixkuang/titanchain/network"
+	"log"
+	"time"
 )
 
+var transports = []network.Transport{
+	network.NewLocalTransport(network.LocalTransportOpts{Addr: "LOCAL"}),
+	//network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_B"}),
+	//network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_C"}),
+}
+
 func main() {
-	// 创建两个本地传输节点，分别命名为 LOCAL 和 REMOTE
-	trLocal := network.NewLocalTransport(network.LocalTransportOpts{Addr: "LOCAL"})
-	trRemoteA := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_A"})
-	trRemoteB := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_B"})
-	trRemoteC := network.NewLocalTransport(network.LocalTransportOpts{Addr: "REMOTE_C"})
-
-	// 建立双向连接
-	trLocal.Connect(trRemoteA)
-	trRemoteA.Connect(trRemoteB)
-	trRemoteB.Connect(trRemoteC)
-	trRemoteB.Connect(trRemoteA)
-	trRemoteA.Connect(trLocal)
-
-	initRemoteServers([]network.Transport{trRemoteA, trRemoteB, trRemoteC})
-
-	if err := sendGetStatusMessage(trRemoteA, "REMOTE_B"); err != nil {
-		log.Fatal(err)
-	}
-
-	// 启动一个 goroutine，定时向 LOCAL 节点发送交易
-	go func() {
-		for {
-			if err := sendTransaction(trRemoteA, trLocal.Addr()); err != nil {
-				logrus.Error(err)
-			}
-			time.Sleep(2 * time.Second)
-		}
-	}()
+	initRemoteServers(transports)
+	localNode := transports[0]
+	trLate := network.NewLocalTransport(network.LocalTransportOpts{Addr: "LATE_NODE"})
+	//remoteNodeA := transports[1]
+	// remoteNodeC := transports[3]
 
 	//go func() {
-	//	time.Sleep(7 * time.Second)
-	//
-	//	trLate := network.NewLocalTransport(network.LocalTransportOpts{Addr: "LATE_REMOTE"})
-	//	trRemoteC.Connect(trLate)
-	//	lateServer := makeServer(string(trLate.Addr()), trLate, nil)
-	//
-	//	go lateServer.Start()
+	//	for {
+	//		if err := sendTransaction(remoteNodeA, localNode.Addr()); err != nil {
+	//			logrus.Error(err)
+	//		}
+	//		time.Sleep(2 * time.Second)
+	//	}
 	//}()
 
+	go func() {
+		time.Sleep(7 * time.Second)
+		lateServer := makeServer(string(trLate.Addr()), trLate, nil)
+		go lateServer.Start()
+	}()
+
 	privKey := crypto.GeneratePrivateKey()
-	localServer := makeServer("LOCAL", trLocal, &privKey)
+	localServer := makeServer("LOCAL", localNode, &privKey)
 	localServer.Start()
 }
 
@@ -73,7 +58,7 @@ func makeServer(id string, tr network.Transport, pk *crypto.PrivateKey) *network
 		Transport:  tr,
 		PrivateKey: pk,
 		ID:         id,
-		Transports: []network.Transport{tr},
+		Transports: transports,
 	}
 
 	s, err := network.NewServer(opts)

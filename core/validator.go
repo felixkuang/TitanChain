@@ -1,6 +1,11 @@
 package core
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrBlockKnown = errors.New("block already known")
 
 // Validator 定义了区块验证器的接口
 type Validator interface {
@@ -30,7 +35,8 @@ func NewBlockValidator(bc *Blockchain) *BlockValidator {
 // 返回验证过程中可能发生的错误
 func (v *BlockValidator) ValidateBlock(b *Block) error {
 	if v.bc.HasBlock(b.Height) {
-		return fmt.Errorf("chain already contains block (%d) with hash (%s)", b.Height, b.Hash(BlockHasher{}))
+		//return fmt.Errorf("chain already contains block (%d) with hash (%s)", b.Height, b.Hash(BlockHasher{}))
+		return ErrBlockKnown
 	}
 
 	if b.Height != v.bc.Height()+1 {

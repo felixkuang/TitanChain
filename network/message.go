@@ -1,5 +1,11 @@
 package network
 
+type GetBlocksMessage struct {
+	From uint32
+	// If To is 0 the maximum blocks will be returned.
+	To uint32
+}
+
 // GetStatusMessage 用于节点间请求状态的网络消息结构体
 // 主要用于节点间同步区块高度、ID等信息
 // 一般由节点主动发起状态请求时发送
